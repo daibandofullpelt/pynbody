@@ -458,3 +458,53 @@ def get_tform(sim, part2birth_path=part2birth_path):
     top.s['tform'].units = 'Gyr'
 
     return sim.s['tform']
+
+
+def compute_tform(sim, alpha=1e-6, axpmin=1e-3, ntable=1000):
+    """
+    Integrate the friedman equation and interplolate expansion factors. Returns formation time in Gyrs using same method as
+    part2birth
+    """
+    import _friedmann
+    omega_k_0 = 0.
+    axp_out, hexp_out, tau_out, t_out, age_tot = _friedmann.friedmann(
+        sim.properties['omegaM0'], sim.properties['omegaL0'], omega_k_0, alpha, axpmin, ntable)
+
+    aexp = sim.properties['a']
+    H0 = sim.properties['h'] * 100.
+    # Find neighbouring expansion factor
+    i = 1
+    while ((axp_out[i] > aexp) and (i < ntable)):
+        i += 1
+
+    # Interpolate time
+    time_simu = t_out[i] * (aexp - axp_out[i - 1]) / (axp_out[i] - axp_out[i - 1]) + \
+        t_out[i - 1] * (aexp - axp_out[i]) / (axp_out[i - 1] - axp_out[i])
+
+    age_simu = (time_simu + age_tot) / \
+        (H0 * 1e5 / 3.08e24) / (365 * 24 * 3600 * 1e9)
+
+    tform = sim.s['tform']
+    output = np.zeros(len(tform))
+    for j in range(0, len(tform) - 1):
+
+        i = 1
+        while ((tau_out[i] > tform[j]) and (i < ntable)):
+            i += 1
+
+        # Interpolate time
+        time = t_out[i] * (tform[j] - tau_out[i - 1]) / (tau_out[i] - tau_out[i - 1]) + \
+            t_out[i - 1] * (tform[j] - tau_out[i]) / \
+            (tau_out[i - 1] - tau_out[i])
+
+        time = max(
+            (time_simu - time) / (H0 * 1e5 / 3.08e24) / (365 * 24 * 3600 * 1e9), 0)
+        output[j] = time
+
+        # output[j] = (time_simu - time)*unit_t/(365 * 24 * 3600 * 1e9)
+
+    # Return age_simu - tform for consistency with old function
+    sim.s['tform'] = age_simu - output
+    sim.s['tform'].units = 'Gyr'
+
+    return sim.s['tform']
